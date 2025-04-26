@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>카르티스 보이스 타이머</title>
+  <style>
+    body {
+      text-align: center;
+      font-family: sans-serif;
+      background: #F7F0E7;
+    }
+    .circle-container {
+      position: relative;
+      width: 200px;
+      height: 200px;
+      margin: 100px auto 20px;
+    }
+    .circle {
+      transform: rotate(-90deg);
+    }
+    #circle-timer-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 32px;
+      font-weight: bold;
+      color: #a67c00;
+    }
+    #logo-overlay {
+      position: absolute;
+      top: -80px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 60px;
+      height: auto;
+      cursor: pointer;
+    }
+    #language-select {
+      margin-top: 10px;
+      font-size: 16px;
+      padding: 5px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    #controls {
+      margin-top: 20px;
+    }
+    .control-button {
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+      background-color: #DDB32A;
+      border: none;
+      color: white;
+      border-radius: 5px;
+    }
+    #endTime {
+      font-size: 16px;
+      margin-top: 10px;
+      color: #555;
+    }
+    #duration-input {
+      margin-top: 10px;
+      font-size: 16px;
+      padding: 5px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      width: 80px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="circle-container">
+    <img id="logo-overlay" src="임시로고.png" alt="로고" onclick="resetTimer()">
+    <svg class="circle" width="200" height="200">
+      <circle cx="100" cy="100" r="90" stroke="#eee" stroke-width="10" fill="none" />
+      <circle id="progress" cx="100" cy="100" r="90" stroke="#72843E" stroke-width="10" fill="none"
+        stroke-linecap="round" stroke-dasharray="565.48" stroke-dashoffset="0" />
+    </svg>
+    <div id="circle-timer-text">50:00</div>
+  </div>
+  <div>
+    <input id="duration-input" type="number" min="1" max="90" value="50"> 분
+  </div>
+  <div>
+    <select id="language-select">
+      <option value="JPN">일본어</option>
+      <option value="KR">한국어</option>
+    </select>
+  </div>
+  <div id="controls">
+    <button class="control-button" id="toggleButton" onclick="toggleTimer()">▶</button>
+  </div>
+  <div id="endTime"></div>
+  <audio id="audio-player"></audio>
+  <script>
+    let isFocus = true;
+    let timeLeft;
+    let totalTime;
+    let timerRunning = false;
+    let interval;
+
+    const durationInput = document.getElementById("duration-input");
+    const languageSelect = document.getElementById("language-select");
+    const progress = document.getElementById("progress");
+    const timerText = document.getElementById("circle-timer-text");
+    const endTimeDisplay = document.getElementById("endTime");
+    const toggleButton = document.getElementById("toggleButton");
+    const audioPlayer = document.getElementById("audio-player");
+
+    const audioFiles = {
+      JPN: {
+        출전: ["KARTIS-JPN/출전/J_8.mp3", "KARTIS-JPN/출전/J_9.mp3", "KARTIS-JPN/출전/J_10.mp3", "KARTIS-JPN/출전/J_11.mp3", "KARTIS-JPN/출전/J_12.mp3"],
+        승리: ["KARTIS-JPN/승리/J_17.mp3", "KARTIS-JPN/승리/J_18.mp3", "KARTIS-JPN/승리/J_19.mp3"],
+        대사: ["KARTIS-JPN/대사/J_1.mp3", "KARTIS-JPN/대사/J_2.mp3", "KARTIS-JPN/대사/J_3.mp3", "KARTIS-JPN/대사/J_4.mp3", "KARTIS-JPN/대사/J_5.mp3", "KARTIS-JPN/대사/J_6.mp3", "KARTIS-JPN/대사/J_7.mp3"],
+        스3: ["KARTIS-JPN/3스/J_21.mp3", "KARTIS-JPN/3스/J_22.mp3", "KARTIS-JPN/3스/JAKI.mp3"],
+        honey: "KARTIS-JPN/HONEY.mp3"
+      },
+      KR: {
+        출전: ["KARTIS-KR/출전/K_8.mp3", "KARTIS-KR/출전/K_9.mp3", "KARTIS-KR/출전/K_10.mp3", "KARTIS-KR/출전/K_11.mp3", "KARTIS-KR/출전/K_12.mp3"],
+        승리: ["KARTIS-KR/승리/K_18.mp3"],
+        대사: ["KARTIS-KR/대사/K_1.mp3", "KARTIS-KR/대사/K_2.mp3", "KARTIS-KR/대사/K_3.mp3", "KARTIS-KR/대사/K_4.mp3", "KARTIS-KR/대사/K_5.mp3", "KARTIS-KR/대사/K_6.mp3", "KARTIS-KR/대사/K_7.mp3"],
+        스3: ["KARTIS-KR/3스/K_19.mp3", "KARTIS-KR/3스/K_21.mp3"],
+        jaki: "KARTIS-KR/JAKI.mp3"
+      }
+    };
+
+    function playAudio(src, callback) {
+      audioPlayer.src = src;
+      audioPlayer.play();
+      if (callback) {
+        audioPlayer.onended = () => {
+          callback();
+          audioPlayer.onended = null;
+        };
+      } else {
+        audioPlayer.onended = null;
+      }
+    }
+
+    function shuffle(array) {
+      return array.sort(() => Math.random() - 0.5);
+    }
+
+    function updateDisplay() {
+      const min = String(Math.floor(timeLeft / 60)).padStart(2, '0');
+      const sec = String(timeLeft % 60).padStart(2, '0');
+      timerText.textContent = `${min}:${sec}`;
+      const offset = (2 * Math.PI * 90) * (1 - timeLeft / totalTime);
+      progress.style.strokeDashoffset = offset;
+    }
+
+    function getFormattedEndTime(duration) {
+      const end = new Date(Date.now() + duration * 1000);
+      const hour = String(end.getHours()).padStart(2, '0');
+      const min = String(end.getMinutes()).padStart(2, '0');
+      return `${hour}:${min} 종료 예정`;
+    }
+
+    function startInterval() {
+      endTimeDisplay.textContent = getFormattedEndTime(timeLeft);
+
+      const lang = languageSelect.value;
+      if (!isFocus) {
+        const shuffled = shuffle([...audioFiles[lang].대사]);
+        setTimeout(() => playAudio(shuffled[0]), 2 * 60 * 1000);
+        setTimeout(() => playAudio(shuffled[1]), 4 * 60 * 1000);
+        setTimeout(() => playAudio(shuffled[2]), 7 * 60 * 1000);
+      }
+
+      interval = setInterval(() => {
+        timeLeft--;
+        updateDisplay();
+
+        if (timeLeft === 5 && isFocus) {
+          if (lang === "JPN") {
+            playAudio(audioFiles.JPN.honey, () => playAudio(randomFrom(audioFiles.JPN.승리)));
+          } else {
+            playAudio(audioFiles.KR.jaki, () => playAudio(randomFrom(audioFiles.KR.승리)));
+          }
+        }
+
+        if (timeLeft === 60 && !isFocus) {
+          playAudio(randomFrom(audioFiles[lang].스3));
+        }
+
+        if (timeLeft <= 0) {
+          clearInterval(interval);
+          isFocus = !isFocus;
+          totalTime = isFocus ? parseInt(durationInput.value) * 60 : 10 * 60;
+          timeLeft = totalTime;
+          progress.style.stroke = isFocus ? "#72843E" : "#ECCA7A";
+          startInterval();
+        }
+      }, 1000);
+    }
+
+    function toggleTimer() {
+      if (timerRunning) {
+        clearInterval(interval);
+        timerRunning = false;
+        toggleButton.textContent = "▶";
+        endTimeDisplay.textContent = "일시정지됨";
+      } else {
+        isFocus = true;
+        totalTime = parseInt(durationInput.value) * 60;
+        timeLeft = totalTime;
+        timerRunning = true;
+        toggleButton.textContent = "⏸";
+        updateDisplay();
+
+        const lang = languageSelect.value;
+        playAudio(randomFrom(audioFiles[lang].출전));
+
+        startInterval();
+      }
+    }
+
+    function resetTimer() {
+      clearInterval(interval);
+      timerRunning = false;
+      toggleButton.textContent = "▶";
+      isFocus = true;
+      totalTime = parseInt(durationInput.value) * 60;
+      timeLeft = totalTime;
+      updateDisplay();
+      endTimeDisplay.textContent = "리셋됨";
+    }
+
+    function randomFrom(arr) {
+      return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    updateDisplay();
+  </script>
+</body>
+</html>
